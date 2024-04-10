@@ -101,11 +101,11 @@ jobs:
            if (file.exists("data/ckl_version.rda")) {
             load(file='data/ckl_version.rda')
             actual_version_major <- ckl_version$minor
-            actual_version_minor <- ckl_version$ckl_version_new
+            actual_version_minor <- ckl_version_new
             actual_version_patch <- ckl_version$minor
           } else {
             actual_version_major <- 1
-            actual_version_minor <- ckl_version$ckl_version_new
+            actual_version_minor <- ckl_version_new
             actual_version_patch <- 0
           }
           ckl_version <- data.frame(
