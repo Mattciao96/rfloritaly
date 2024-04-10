@@ -2,7 +2,7 @@ name: UpdateData
 
 on:
   schedule:
-    - cron: "0 23 * * *" # This will run the workflow daily at midnight
+    - cron: "*/10 * * * *" # This will run the workflow daily at midnight
 
 jobs:
   update-data:
@@ -95,9 +95,25 @@ jobs:
           #rgnparser::install_gnparser()
 
 
-          ckl_version <- httr::GET('https://dryades.units.it/api_test/floritaly/version')
-          ckl_version <- fromJSON(rawToChar(ckl_version$content))
-          ckl_version <- as.data.frame(ckl_version)
+          ckl_version_new <- httr::GET('https://dryades.units.it/api_test/floritaly/rversion')
+          ckl_version_new <- fromJSON(rawToChar(ckl_version_new $content))
+          ckl_version_new <- ckl_version_new$r_version
+           if (file.exists("data/ckl_version.rda")) {
+            load(file='data/ckl_version.rda')
+            actual_version_major <- ckl_version$minor
+            actual_version_minor <- ckl_version$ckl_version_new
+            actual_version_patch <- ckl_version$minor
+          } else {
+            actual_version_major <- 1
+            actual_version_minor <- ckl_version$ckl_version_new
+            actual_version_patch <- 0
+          }
+          ckl_version <- data.frame(
+            major = actual_version_major,
+            minor = actual_version_minor,
+            patch = actual_version_patch
+          )
+
 
           ckl_data <- httr::GET('https://dryades.units.it/api_test/floritaly/checklist')
           ckl_data <- fromJSON(rawToChar(ckl_data$content))
