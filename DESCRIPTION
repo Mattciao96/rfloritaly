@@ -1,7 +1,7 @@
 Package: rfloritaly
 Type: Package
 Title: Access the Checklist of Italian Vascular Flora
-Version: 1.10.0
+Version: 1.11.0
 Authors@R: 
     person("Gianni", "Bedini", , "gianni.bedini@unipi.it", role = c("aut", "cre", "cph"))
     person("Matteo", "Conti", , "matteo.conti@phd.units.it", role = c("aut", "cre","cph"))
