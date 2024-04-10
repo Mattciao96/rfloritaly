@@ -33,16 +33,16 @@ jobs:
           if (file.exists("data/ckl_version.rda")) {
             load(file='data/ckl_version.rda')
             pkg_version <- ckl_version
-            pkg_version <- pkg_version$version
+            pkg_version <- pkg_version$minor
           } else {
             pkg_version <- "1"
           }
 
 
           # get the checklist version in the dryades server (if it exists)
-          curr_version <- httr::GET('https://dryades.units.it/api_test/floritaly/version')
+          curr_version <- httr::GET('https://dryades.units.it/api_test/floritaly/rversion')
           curr_version <- fromJSON(rawToChar(curr_version$content))
-          curr_version <- curr_version$version
+          curr_version <- curr_version$r_version
 
           ckl_needs_update <- as.character(pkg_version) != curr_version
           ckl_needs_update <- as.character(ckl_needs_update)
