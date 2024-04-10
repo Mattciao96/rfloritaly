@@ -2,7 +2,7 @@ name: UpdateData
 
 on:
   schedule:
-    - cron: "*/30 * * * *" # This will run the workflow daily at midnight
+    - cron: "0 23 * * *" # This will run the workflow daily at midnight
 
 jobs:
   update-data:
