@@ -1,0 +1,199 @@
+name: UpdateData
+
+on:
+  schedule:
+    - cron: "0 23 * * *" # This will run the workflow daily at midnight
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }} # Use the GITHUB_TOKEN to checkout
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Install packages and dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::httr
+            any::jsonlite
+
+      - name: Check if the checklist has been updated
+        run: |
+          library(httr)
+          library(jsonlite)
+
+          # get the checklist version in the package.
+          # if there is no data about the checklist version in the package set the version to 1
+          if (file.exists("data/ckl_version.rda")) {
+            load(file='data/ckl_version.rda')
+            pkg_version <- ckl_version
+            pkg_version <- pkg_version$version
+          } else {
+            pkg_version <- "1"
+          }
+
+
+          # get the checklist version in the dryades server (if it exists)
+          curr_version <- httr::GET('https://dryades.units.it/api_test/floritaly/version')
+          curr_version <- fromJSON(rawToChar(curr_version$content))
+          curr_version <- curr_version$version
+
+          ckl_needs_update <- as.character(pkg_version) != curr_version
+          ckl_needs_update <- as.character(ckl_needs_update)
+
+          # Set ckl_needs_update as an output variable
+          system(paste0("echo 'needs_update=", ckl_needs_update, "' >> $GITHUB_ENV"))
+          # Set ckl_version as an output variable
+          system(paste0("echo 'ckl_version=", curr_version, "' >> $GITHUB_ENV"))
+        shell: Rscript {0}
+
+      - name: check if the variable needs_update is TRUE can be read from the shell
+        run: |
+          echo $needs_update
+
+      - name: Set up Go
+        if: env.needs_update == 'TRUE'
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.21.x"
+
+      - name: Install gnparser
+        if: env.needs_update == 'TRUE'
+        run: go install github.com/gnames/gnparser/gnparser@latest
+
+      - name: Install addictional packages and dependencies
+        if: env.needs_update == 'TRUE'
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::devtools
+            any::rgnparser
+            any::dplyr
+            any::fuzzyjoin
+            any::magrittr
+            any::rgnparser
+            any::stringdist
+            any::stringr
+
+      - name: Update the package data
+        if: env.needs_update == 'TRUE'
+        run: |
+          library(httr)
+          library(jsonlite)
+          library(devtools)
+          library(dplyr)
+          library(rgnparser)
+          #rgnparser::install_gnparser()
+
+
+          ckl_version <- httr::GET('https://dryades.units.it/api_test/floritaly/version')
+          ckl_version <- fromJSON(rawToChar(ckl_version$content))
+          ckl_version <- as.data.frame(ckl_version)
+
+          ckl_data <- httr::GET('https://dryades.units.it/api_test/floritaly/checklist')
+          ckl_data <- fromJSON(rawToChar(ckl_data$content))
+          ckl_data <- as.data.frame(ckl_data)
+
+          ckl_names <-httr::GET('https://dryades.units.it/api_test/floritaly/names')
+          ckl_names <- fromJSON(rawToChar(ckl_names$content))
+          ckl_names <- as.data.frame(ckl_names)
+
+          # check that the generated dataframes aren't empty, else throw an error saying which dataframe has invalid data
+          if (nrow(ckl_version) == 0) {
+            stop("ckl_version is empty")
+          }
+          if (nrow(ckl_data) == 0) {
+            stop("ckl_data is empty")
+          }
+          if (nrow(ckl_names) == 0) {
+            stop("ckl_names is empty")
+          }
+
+          ##################################
+          #clean the datasets
+          ##################################
+          ckl_data <- ckl_data %>%
+            dplyr::filter(!grepl(pattern = ".+auct\\..+p\\.p\\.", x = entita)) %>%
+            unique()
+
+          ckl_names <- ckl_names %>%
+            dplyr::filter(!grepl(pattern = ".+auct\\.", x = sinonimo)) %>%
+            dplyr::filter(!grepl(pattern = "^\\?.+",x = sinonimo)) %>%
+            dplyr::filter(!grepl("^Sesleria apennina Ujhelyi$", sinonimo)) %>%
+            unique() 
+
+          ##################################
+          #save all
+          ##################################
+
+          # save the dataframes as rda files in the data folder
+          save(ckl_version, file='data/ckl_version.rda')
+          save(ckl_data, file='data/ckl_data.rda')
+          save(ckl_names, file='data/ckl_names.rda')
+
+          ###################################
+          #now generate the parsed_data
+          ###################################
+          load_all()
+          data_to_parse <- unique(c(ckl_names$entita, ckl_names$sinonimo))
+          ckl_parsed <- data.frame()
+          i <- 1
+          for (name in data_to_parse) {
+            parsed_name <-  superparse(name)
+            if (i == 1) {
+              ckl_parsed <- parsed_name
+            } else {
+              ckl_parsed <- rbind(ckl_parsed, parsed_name)
+            }
+            i <-  i + 1
+          }
+
+          if (nrow(ckl_parsed) == 0) {
+            stop("ckl_parsed is empty")
+          }
+
+          ckl_parsed <- ckl_parsed %>%
+            dplyr::filter(quality > 0, quality < 4, cardinality > 1, cardinality < 4)
+
+          save(ckl_parsed, file='data/ckl_parsed.rda')
+        shell: Rscript {0}
+
+      - name: Update package version
+        run: |
+          package_version=$(curl -s http://dryades.units.it/api_test/floritaly/rversion | jq -r '.r_version')
+          echo "Fetched patch version: $package_version"
+
+          # Read the current version
+          version_line=$(grep -o '^Version: .*$' DESCRIPTION)
+          version_numbers=${version_line##* }
+          IFS='.' read -r major minor patch <<< "$version_numbers"
+          echo "Major: $major, Minor: $minor, Patch: $patch"
+          
+          # Get the new version 
+          new_minor=$package_version
+          new_version="$major.$new_minor.$patch"
+
+          # Update the DESCRIPTION file 
+          sed -i "s/^Version: .*/Version: $new_version/" DESCRIPTION
+
+          # Store the new version as environmental variable for later use
+          echo "r_version=$new_version" >> $GITHUB_ENV
+
+      - name: Commit and push if it changed
+        run: |
+          git config --local user.name "Automated"
+          git config --local user.email "actions@.github.com"
+          git add DESCRIPTION
+          git commit -m "package updated to $r_version" || echo "no changes"
+          git add .
+          git commit -m "checklist updated to $ckl_version" || echo "no changes"
+          
+          git push origin || "no changes to commit"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # Use the GITHUB_TOKEN to push
