@@ -44,6 +44,9 @@ jobs:
           curr_version <- fromJSON(rawToChar(curr_version$content))
           curr_version <- curr_version$r_version
 
+          system(paste0("echo 'in_r_v=", pkg_version, "' >> $GITHUB_ENV"))
+          system(paste0("echo 'in_db_v=", curr_version, "' >> $GITHUB_ENV"))
+
           ckl_needs_update <- as.character(pkg_version) != as.character(curr_version)
           ckl_needs_update <- as.character(ckl_needs_update)
 
